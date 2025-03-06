@@ -1,11 +1,12 @@
+#include <curses.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
-#include <curses.h>                   
 
-#define HEIGTH 4
+#define HEIGHT 4
 #define WIDTH 4
 #define QUIT_KEY 'q'
 
@@ -28,7 +29,8 @@
 #define RESET   "\x1b[0m"
 
 // The game board
-int board[HEIGTH][WIDTH];
+int board[HEIGHT][WIDTH];
+// int free_cells = HEIGHT * WIDTH;
 
 struct termios orig_termios;
 
@@ -103,7 +105,7 @@ void print_number(int num) {
 }
 
 void print_board() {
-  for (int i = 0; i < HEIGTH; i++) {
+  for (int i = 0; i < HEIGHT; i++) {
     print_row_separator(WIDTH);
 
     for (int j = 0; j < WIDTH; j++) {
@@ -117,26 +119,211 @@ void print_board() {
   print_row_separator(WIDTH);
 }
 
+typedef struct Position {
+  int x;
+  int y;
+} position;
+
+position get_new_cell(int row, int col) {
+  // assert that either the row or the col is given and not both
+  if (!(row == -1 || col == -1) && row != col) {
+    perror("both the row and col where not specified");
+    exit(1);
+  }
+  
+  position p = {-1, -1};
+
+  bool tried[4] = {false};
+  int num_tried = 0;
+
+  if (row == -1) {
+    p.x = col;
+    while (num_tried < WIDTH) {
+      int new_row = rand() % WIDTH;
+
+      if (tried[new_row]) continue;
+      
+      if (board[new_row][col] == 0) {
+        // printf("      %d        %d\n", new_row, col);
+        // print_board();
+        // printf("board[new_row][col]: %d\n", board[new_row][col]);
+        printf("board[%d][%d]: %d\n", new_row, col, board[new_row][col]);
+        p.y = new_row;
+        return p;
+      } else {
+        tried[new_row] = true;
+        num_tried += 1;
+      }
+    }
+  } else p.y = row;
+
+
+  if (col == -1) {
+    p.y = row;
+    while (num_tried < HEIGHT) {
+      int new_col = rand() % HEIGHT;
+
+      if (tried[new_col]) continue;
+      
+      if (board[row][new_col] == 0) {
+        p.x = new_col;
+        return p;
+      } else {
+        tried[new_col] = true;
+        num_tried += 1;
+      }
+    }
+  } else p.x = col;
+
+  return p;
+}
+
+typedef enum direction {UP, DOWN, LEFT, RIGHT} movement;
+/*
+  move the board in a given direction.
+  Return -1 if no movement can be done.
+*/
+int move_board(movement move) {
+  switch(move) {
+    case UP:
+      for (int x = 0; x < WIDTH; x++) {
+
+        // Prepare the point to jump and skip the zeros in the way
+        int jump = 0, jump_start = 0;
+        while (board[jump_start][x] != 0) jump_start++;
+        while (board[jump_start + jump][x] == 0 && jump + jump_start < HEIGHT - 1) jump++;
+        
+        // skip zeros
+        printf("jump: %d\n", jump);
+        printf("jump_start: %d\n", jump_start);
+        // if (jump != HEIGHT) {
+          for (int y = jump_start; y < HEIGHT - 1; y++) {
+            if (y + jump >= HEIGHT) break;
+            board[y][x] = board[y + jump][x];
+            board[y + jump][x] = 0;
+          }
+        // }
+
+        // Merge cells
+        for (int y = 1; y < HEIGHT; y++) {
+          if (board[y][x] == board[y-1][x] && board[y][x] != 0) {
+            board[y-1][x] *= 2;
+            board[y][x] = 0;
+          } else if (board[y-1][x] == 0) {
+            board[y-1][x] = board[y][x];
+            board[y][x] = 0;
+          }
+        }
+      }
+      break;
+    case DOWN:
+      for (int x = WIDTH - 1; x > -1; x--) {
+
+        // Prepare the point to jump and skip the zeros in the way
+        int jump = WIDTH - 1, jump_start = WIDTH - 1;
+        while (board[jump_start][x] != 0) jump_start--;
+        while (board[jump - jump_start][x] == 0 && jump - jump_start > -1) jump--;
+        
+        // skip zeros
+          for (int y = jump_start; y > -1; y--) {
+            if (y - jump < 0) break;
+            board[y][x] = board[y - jump][x];
+            board[y - jump][x] = 0;
+          }
+
+        // Merge cells
+        for (int y = HEIGHT - 2; y > -1; y--) {
+          if (board[y][x] == board[y + 1][x] && board[y][x] != 0) {
+            board[y + 1][x] *= 2;
+            board[y][x] = 0;
+          } else if (board[y + 1][x] == 0) {
+            board[y + 1][x] = board[y][x];
+            board[y][x] = 0;
+          }
+        }
+      }
+      break;
+    case LEFT:
+      for (int y = 0; y < HEIGHT; y++) {
+
+        // Prepare the point to jump and skip the zeros in the way
+        int jump = 0, jump_start = 0;
+        while (board[y][jump_start] != 0) jump_start++;
+        while (board[y][jump_start + jump] == 0 && jump + jump_start < WIDTH - 1) jump++;
+
+        // skip zeros
+        for (int x = jump_start; x < WIDTH - 1; x++) {
+          if (x + jump >= WIDTH)
+            break;
+          board[y][x] = board[y][x + jump];
+          board[y][x + jump] = 0;
+        }
+
+        // Merge cells
+        for (int x = 1; x < WIDTH; x++) {
+          if (board[y][x] == board[y][x - 1]) {
+            board[y][x - 1] *= 2;
+            board[y][x] = 0;
+          } else if (board[y][x - 1] == 0) {
+            board[y][x - 1] = board[y][x];
+            board[y][x] = 0;
+          }
+        }
+      }
+      break;
+    case RIGHT:
+      for (int y = HEIGHT - 1; y > -1; y--) {
+
+        // Prepare the point to jump and skip the zeros in the way
+        int jump = HEIGHT - 1, jump_start = HEIGHT - 1;
+        while (board[y][jump_start] != 0) jump_start--;
+        while (board[y][jump - jump_start] == 0 && jump - jump_start > -1) jump--;
+
+        // skip zeros
+        for (int x = jump_start; x > -1; x--) {
+          if (x - jump < 0) break;
+          board[y][x] = board[y][x - jump];
+          board[y][x - jump] = 0;
+        }
+
+        // Merge cells
+        for (int x = WIDTH - 2; x > -1; x--) {
+          if (board[y][x] == board[y][x + 1]) {
+            board[y][x + 1] *= 2;
+            board[y][x] = 0;
+          } else if (board[y][x + 1] == 0) {
+            board[y][x + 1] = board[y][x];
+            board[y][x] = 0;
+          }
+        }
+      }
+      break;
+  }
+  return 0;  
+}
+
 int main(void) {
   enableRawMod();
 
+  srand(time(NULL));
+  
   char move;
   bool playing = true;
 
-  board[0][0] = 0;
-  board[0][1] = 2;
-  board[0][2] = 4;
-  board[0][3] = 8;
+  // board[0][0] = 0;
+  // board[0][1] = 2;
+  // board[0][2] = 4;
+  // board[0][3] = 8;
 
-  board[1][0] = 16;
-  board[1][1] = 32;
-  board[1][2] = 64;
-  board[1][3] = 128;
+  // board[1][0] = 16;
+  // board[1][1] = 32;
+  // board[1][2] = 64;
+  // board[1][3] = 128;
 
-  board[2][0] = 256;
-  board[2][1] = 512;
-  board[2][2] = 1024;
-  board[2][3] = 2048;
+  // board[2][0] = 256;
+  // board[2][1] = 512;
+  // board[2][2] = 1024;
+  // board[2][3] = 2048;
   
   while (read(STDIN_FILENO, &move, 1) &&
          move != QUIT_KEY &&
@@ -144,6 +331,52 @@ int main(void) {
   ) {
     // printf("%c", move);
     if (move == 'p') {
+      print_board();
+    }
+
+    // up
+    if (move == 'w') {
+      move_board(UP);
+      position new_pos = get_new_cell(HEIGHT - 1, -1);
+      int x = new_pos.x, y = new_pos.y; 
+      
+      printf("x: %d, y: %d\n", x, y);
+      if (x == -1 || y == -1) break;
+      board[new_pos.y][new_pos.x] = 2;
+      print_board();
+      
+    }
+    // left
+    if (move == 'a') {
+      move_board(LEFT);
+      position new_pos = get_new_cell(-1, WIDTH - 1);
+      int x = new_pos.x, y = new_pos.y; 
+      
+      printf("x: %d, y: %d\n", x, y);
+      if (x == -1 || y == -1) break;
+      board[new_pos.y][new_pos.x] = 2;
+      print_board();
+    }
+    // down
+    if (move == 's') {
+      move_board(DOWN);
+      position new_pos = get_new_cell(0, -1);
+      int x = new_pos.x, y = new_pos.y; 
+      
+      printf("x: %d, y: %d\n", x, y);
+      if (x == -1 || y == -1) break;
+      board[new_pos.y][new_pos.x] = 2;
+      print_board();
+    }
+    // right
+    if (move == 'd') {
+      move_board(RIGHT);
+      position new_pos = get_new_cell(-1, 0);
+      int x = new_pos.x, y = new_pos.y; 
+      
+      printf("x: %d, y: %d\n", x, y);
+      if (x == -1 || y == -1) break;
+      board[new_pos.y][new_pos.x] = 2;
       print_board();
     }
   }
