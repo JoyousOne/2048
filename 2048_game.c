@@ -28,9 +28,31 @@
 #define B_WHITE   "\x1b[97m"
 #define RESET   "\x1b[0m"
 
+#define DESCRIPTION "\
++----------------------------+\n\
+| Description:               |\n\
+| ----                       |\n\
+|   Merge identical cells to |\n\
+|   double their value. You  |\n\
+|   win once you reach 2048. |\n\
+|                            |\n\
+|   If you cannot move the   |\n\
+|   the board, you lose.     |\n\
++----------------------------+\n\
+"
+#define KEYS "\
++----------------------------+\n\
+| Keys:                      |\n\
+| ----                       |\n\
+|   w,a,s,d:      move board |\n\
+|   q:             quit game |\n\
+|   c:    toggle this window |\n\
+|   g:    toggle description |\n\
++----------------------------+\n\
+"
+
 // The game board
 int board[HEIGHT][WIDTH];
-// int free_cells = HEIGHT * WIDTH;
 
 struct termios orig_termios;
 
@@ -204,20 +226,19 @@ bool move_is_possible() {
   for (int i = 0; i < WIDTH - 1; i++)
     if (board[i][WIDTH-1] == board[i+1][WIDTH-1]) return true;
   
-  // print_board();
   return false;
 }
 
 typedef enum direction {UP, DOWN, LEFT, RIGHT} movement;
 typedef enum result {VICTORY, DEFEAT, PLAYING, ERROR} result;
+
 /*
   move the board in a given direction.
   Return -1 if no movement can be done.
 */
 int move_board(movement move) {
   int result = PLAYING;
-  // if (!move_is_possible() && result != VICTORY) result = DEFEAT;
-  // if (!move_is_possible()) return DEFEAT;
+
   switch(move) {
     case UP:
       for (int x = 0; x < WIDTH; x++) {
@@ -341,7 +362,6 @@ int move_board(movement move) {
       }
       break;
   }
-  // if (!move_is_possible() && result != VICTORY) result = DEFEAT;
   return result;
 }
 
@@ -385,80 +405,72 @@ int main(void) {
   clear_terminal();
 
   char move;
-  bool playing = true;
 
+  printf(DESCRIPTION);
+  printf(KEYS);
+  bool show_keys = true, show_desc = true;
 
-  // for (int i = 0; i < WIDTH; i++){
-  //   for (int j = 0; j < HEIGHT; j++) {
-  //     board[i][j] = i + j;
-  //   }
-  // }
-  // board[0][0] = 1024;
-  // board[0][1] = 1024;
-  
-  // board[0][0] = 0;
-  // board[0][1] = 2;
-  // board[0][0] = 0;
-  // board[0][1] = 2;
-  // board[0][2] = 4;
-  // board[0][3] = 8;
-
-  // board[1][0] = 16;
-  // board[1][1] = 32;
-  // board[1][2] = 64;
-  // board[1][3] = 128;
-
-  // board[2][0] = 256;
-  // board[2][1] = 512;
-  // board[2][2] = 1024;
-  // board[2][3] = 2048;
+  printf("Press any key to start\n");
   
   while (read(STDIN_FILENO, &move, 1) &&
-         move != QUIT_KEY &&
-         playing
+         move != QUIT_KEY
   ) {
-    position new_pos;
 
-    // up
-    if (move == 'w') {
-      result res = move_board(UP);
-      new_pos = get_new_cell(HEIGHT - 1, -1);
-      
-      insert_cell(&new_pos);
-      // if (!insert_cell(&new_pos)) res = DEFEAT;
-      // 
-      treat_result(res);
-    }
-    // left
-    if (move == 'a') {
-      result res = move_board(LEFT);
-      new_pos = get_new_cell(-1, WIDTH - 1);
-      
-      insert_cell(&new_pos);
-      // if (!insert_cell(&new_pos)) res = DEFEAT;
-      treat_result(res);
-    }
-    // down
-    if (move == 's') {
-      result res = move_board(DOWN);
-      new_pos = get_new_cell(0, -1);
-      
-      insert_cell(&new_pos);
-      // if (!insert_cell(&new_pos)) res = DEFEAT;
-      treat_result(res);
-    }
-    // right
-    if (move == 'd') {
-      result res = move_board(RIGHT);
-      new_pos = get_new_cell(-1, 0);
-      
-      insert_cell(&new_pos);
-      // if (!insert_cell(&new_pos)) res = DEFEAT;
-      treat_result(res);
-    }
-
-    if (!move_is_possible()) treat_result(DEFEAT);
     clear_terminal();
+    if (show_desc) printf(DESCRIPTION);
+    if (show_keys) printf(KEYS);
+    
+    position new_pos;
+    result res = PLAYING;
+
+    switch (move) {
+      // up
+      case 'w':
+        res = move_board(UP);
+        new_pos = get_new_cell(HEIGHT - 1, -1);
+        insert_cell(&new_pos);
+        break;
+      // left
+      case 'a':
+        res = move_board(LEFT);
+        new_pos = get_new_cell(-1, WIDTH - 1);
+        insert_cell(&new_pos);
+        break;
+      // down
+      case 's':
+        res = move_board(DOWN);
+        new_pos = get_new_cell(0, -1);
+        insert_cell(&new_pos);
+        break;
+      // right
+      case 'd':
+        res = move_board(RIGHT);
+        new_pos = get_new_cell(-1, 0);
+        insert_cell(&new_pos);
+        break;
+      // Toggle Keys
+      case 'c':
+        show_keys = !show_keys;
+        break;
+      case 'g':
+        show_desc = !show_desc;
+      default:
+        print_board();
+        break;
+      }
+
+      if (move == 'c' || move == 'g') {
+        clear_terminal();
+
+        if (show_desc) printf(DESCRIPTION);
+        if (show_keys) printf(KEYS);
+
+        print_board();
+      }    
+
+      treat_result(res);
+    
+    if (!move_is_possible()) treat_result(DEFEAT);
   }
 
   return 0;
