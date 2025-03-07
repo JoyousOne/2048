@@ -100,9 +100,12 @@ void print_number(int num) {
       printf(B_MAGENTA "2048" RESET "");
       break;
     default:
+      printf("Invalid number: %d", num);
       exit(1);
   }
 }
+
+void clear_terminal() { printf("\e[1;1H\e[2J"); }
 
 void print_board() {
   for (int i = 0; i < HEIGHT; i++) {
@@ -144,10 +147,6 @@ position get_new_cell(int row, int col) {
       if (tried[new_row]) continue;
       
       if (board[new_row][col] == 0) {
-        // printf("      %d        %d\n", new_row, col);
-        // print_board();
-        // printf("board[new_row][col]: %d\n", board[new_row][col]);
-        printf("board[%d][%d]: %d\n", new_row, col, board[new_row][col]);
         p.y = new_row;
         return p;
       } else {
@@ -178,12 +177,47 @@ position get_new_cell(int row, int col) {
   return p;
 }
 
+bool move_is_possible() {
+
+  // Check if there is mergeable cells
+  for (int row = 0; row < HEIGHT - 1; row++) {
+    for (int col = 0; col < WIDTH - 1; col++) {
+      if (board[row][col] == board[row][col + 1] ||
+          board[row][col] == board[row + 1][col])
+        return true;
+    }
+  }
+
+  // Check if there is a zero present
+  for (int row = 0; row < HEIGHT; row++) {
+    for (int col = 0; col < WIDTH; col++) {
+      if (board[row][col] == 0)
+        return true;
+    }
+  }
+
+  // Check last row
+  for (int i = 0; i < WIDTH - 1; i++)
+    if (board[HEIGHT-1][i] == board[HEIGHT-1][i+1]) return true;
+
+  // Check last col
+  for (int i = 0; i < WIDTH - 1; i++)
+    if (board[i][WIDTH-1] == board[i+1][WIDTH-1]) return true;
+  
+  // print_board();
+  return false;
+}
+
 typedef enum direction {UP, DOWN, LEFT, RIGHT} movement;
+typedef enum result {VICTORY, DEFEAT, PLAYING, ERROR} result;
 /*
   move the board in a given direction.
   Return -1 if no movement can be done.
 */
 int move_board(movement move) {
+  int result = PLAYING;
+  // if (!move_is_possible() && result != VICTORY) result = DEFEAT;
+  // if (!move_is_possible()) return DEFEAT;
   switch(move) {
     case UP:
       for (int x = 0; x < WIDTH; x++) {
@@ -194,20 +228,19 @@ int move_board(movement move) {
         while (board[jump_start + jump][x] == 0 && jump + jump_start < HEIGHT - 1) jump++;
         
         // skip zeros
-        printf("jump: %d\n", jump);
-        printf("jump_start: %d\n", jump_start);
-        // if (jump != HEIGHT) {
           for (int y = jump_start; y < HEIGHT - 1; y++) {
             if (y + jump >= HEIGHT) break;
             board[y][x] = board[y + jump][x];
             board[y + jump][x] = 0;
           }
-        // }
 
         // Merge cells
         for (int y = 1; y < HEIGHT; y++) {
           if (board[y][x] == board[y-1][x] && board[y][x] != 0) {
             board[y-1][x] *= 2;
+
+            if (board[y-1][x] == 2048) result = VICTORY;
+            
             board[y][x] = 0;
           } else if (board[y-1][x] == 0) {
             board[y-1][x] = board[y][x];
@@ -235,6 +268,9 @@ int move_board(movement move) {
         for (int y = HEIGHT - 2; y > -1; y--) {
           if (board[y][x] == board[y + 1][x] && board[y][x] != 0) {
             board[y + 1][x] *= 2;
+
+            if (board[y + 1][x] == 2048) result = VICTORY;
+            
             board[y][x] = 0;
           } else if (board[y + 1][x] == 0) {
             board[y + 1][x] = board[y][x];
@@ -263,6 +299,9 @@ int move_board(movement move) {
         for (int x = 1; x < WIDTH; x++) {
           if (board[y][x] == board[y][x - 1]) {
             board[y][x - 1] *= 2;
+
+            if (board[y][x-1] == 2048) result = VICTORY;
+            
             board[y][x] = 0;
           } else if (board[y][x - 1] == 0) {
             board[y][x - 1] = board[y][x];
@@ -290,6 +329,9 @@ int move_board(movement move) {
         for (int x = WIDTH - 2; x > -1; x--) {
           if (board[y][x] == board[y][x + 1]) {
             board[y][x + 1] *= 2;
+
+            if (board[y][x + 1] == 2048) result = VICTORY;
+            
             board[y][x] = 0;
           } else if (board[y][x + 1] == 0) {
             board[y][x + 1] = board[y][x];
@@ -299,7 +341,40 @@ int move_board(movement move) {
       }
       break;
   }
-  return 0;  
+  // if (!move_is_possible() && result != VICTORY) result = DEFEAT;
+  return result;
+}
+
+void treat_result(result res) {
+  switch (res) {
+    case VICTORY:
+      printf(GREEN "YOU HAVE WON !!!" RESET "\n");
+      exit(0);
+      break;
+    case DEFEAT:
+      printf(RED "YOU LOST!" RESET "\n");
+      exit(0);
+      break;
+    // We don't need to do anything in this case
+    case PLAYING:
+    default:
+      break;
+  }
+}
+
+/*
+  Return true if the new position is valid and added, false if the game is done
+*/
+bool insert_cell(position *new_pos) {
+  int x = new_pos->x, y = new_pos->y;
+
+  bool valid_position = true;
+  
+  if (x == -1 || y == -1) valid_position = false;
+  else board[y][x] = 2;
+  
+  print_board();
+  return valid_position;
 }
 
 int main(void) {
@@ -307,9 +382,22 @@ int main(void) {
 
   srand(time(NULL));
   
+  clear_terminal();
+
   char move;
   bool playing = true;
 
+
+  // for (int i = 0; i < WIDTH; i++){
+  //   for (int j = 0; j < HEIGHT; j++) {
+  //     board[i][j] = i + j;
+  //   }
+  // }
+  // board[0][0] = 1024;
+  // board[0][1] = 1024;
+  
+  // board[0][0] = 0;
+  // board[0][1] = 2;
   // board[0][0] = 0;
   // board[0][1] = 2;
   // board[0][2] = 4;
@@ -329,56 +417,48 @@ int main(void) {
          move != QUIT_KEY &&
          playing
   ) {
-    // printf("%c", move);
-    if (move == 'p') {
-      print_board();
-    }
+    position new_pos;
 
     // up
     if (move == 'w') {
-      move_board(UP);
-      position new_pos = get_new_cell(HEIGHT - 1, -1);
-      int x = new_pos.x, y = new_pos.y; 
+      result res = move_board(UP);
+      new_pos = get_new_cell(HEIGHT - 1, -1);
       
-      printf("x: %d, y: %d\n", x, y);
-      if (x == -1 || y == -1) break;
-      board[new_pos.y][new_pos.x] = 2;
-      print_board();
-      
+      insert_cell(&new_pos);
+      // if (!insert_cell(&new_pos)) res = DEFEAT;
+      // 
+      treat_result(res);
     }
     // left
     if (move == 'a') {
-      move_board(LEFT);
-      position new_pos = get_new_cell(-1, WIDTH - 1);
-      int x = new_pos.x, y = new_pos.y; 
+      result res = move_board(LEFT);
+      new_pos = get_new_cell(-1, WIDTH - 1);
       
-      printf("x: %d, y: %d\n", x, y);
-      if (x == -1 || y == -1) break;
-      board[new_pos.y][new_pos.x] = 2;
-      print_board();
+      insert_cell(&new_pos);
+      // if (!insert_cell(&new_pos)) res = DEFEAT;
+      treat_result(res);
     }
     // down
     if (move == 's') {
-      move_board(DOWN);
-      position new_pos = get_new_cell(0, -1);
-      int x = new_pos.x, y = new_pos.y; 
+      result res = move_board(DOWN);
+      new_pos = get_new_cell(0, -1);
       
-      printf("x: %d, y: %d\n", x, y);
-      if (x == -1 || y == -1) break;
-      board[new_pos.y][new_pos.x] = 2;
-      print_board();
+      insert_cell(&new_pos);
+      // if (!insert_cell(&new_pos)) res = DEFEAT;
+      treat_result(res);
     }
     // right
     if (move == 'd') {
-      move_board(RIGHT);
-      position new_pos = get_new_cell(-1, 0);
-      int x = new_pos.x, y = new_pos.y; 
+      result res = move_board(RIGHT);
+      new_pos = get_new_cell(-1, 0);
       
-      printf("x: %d, y: %d\n", x, y);
-      if (x == -1 || y == -1) break;
-      board[new_pos.y][new_pos.x] = 2;
-      print_board();
+      insert_cell(&new_pos);
+      // if (!insert_cell(&new_pos)) res = DEFEAT;
+      treat_result(res);
     }
+
+    if (!move_is_possible()) treat_result(DEFEAT);
+    clear_terminal();
   }
 
   return 0;
